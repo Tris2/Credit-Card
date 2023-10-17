@@ -487,8 +487,8 @@ plt.xlabel("Transaction Type")
 plt.ylabel("Transaction Count")
 plt.title("Transaction Type with the Highest Transaction Count")
 plt.tight_layout()
-# Save the visualization to a folder in your GitHub repository with a proper name
-plt.savefig("path_to_github_repo/transaction_type_highest_count.png")
+# Save the visualization to folder in my GitHub repository
+plt.savefig("C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/transaction_type_highest_count.png")
 plt.show()
 # Close the database connection
 cursor.close()
@@ -527,8 +527,8 @@ plt.xlabel("State")
 plt.ylabel("Customer Count")
 plt.title("State with a High Number of Customers")
 plt.tight_layout()
-# Save the visualization to a folder in your GitHub repository with a proper name
-plt.savefig("path_to_github_repo/state_high_customer_count.png")
+# Save the visualization to folder in my GitHub repository
+plt.savefig("C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/state_high_customer_count.png")
 plt.show()
 # Close the database connection
 cursor.close()
@@ -570,8 +570,8 @@ plt.ylabel("Total Transaction Amount")
 plt.title("Top 10 Customers with Highest Transaction Amount")
 plt.xticks(rotation=45)
 plt.tight_layout()
-# Save the visualization to a folder in your GitHub repository with a proper name
-plt.savefig("path_to_github_repo/top_10_customers_transaction_amount.png")
+# Save the visualization to folder in my GitHub repository
+plt.savefig("C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/top_10_customers_transaction_amount.png")
 plt.show()
 # Close the database connection
 cursor.close()
@@ -675,7 +675,7 @@ Note: Save a copy of the visualization to a folder in your github, making sure i
 
 """
 
-# Load data from your MySQL database into a Pandas DataFrame
+# Load data from MySQL database into a Pandas DataFrame
 db = mysql.connector.connect(
     host = "localhost",
     user = secrets.mysql_username,
@@ -692,8 +692,8 @@ approved_percentage = (self_employed_applicants['Application_Status'] == 'Y').me
 plt.bar(['Self-Employed'], [approved_percentage])
 plt.ylabel('Percentage Approved')
 plt.title('Percentage of Applications Approved for Self-Employed Applicants')
-# Save the visualization to a folder in your GitHub repository
-#plt.savefig('path/to/your/github/repository/self_employed_approval.png')
+# Save the visualization to folder in my GitHub repository
+plt.savefig('C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/self_employed_approval.png')
 
 
 #Req 5.2
@@ -713,8 +713,8 @@ rejection_percentage = (married_male_applicants['Application_Status'] == 'N').me
 plt.bar(['Married Male'], [rejection_percentage])
 plt.ylabel('Percentage Rejected')
 plt.title('Percentage of Rejection for Married Male Applicants')
-# Save the visualization to a folder in your GitHub repository
-#plt.savefig('path/to/your/github/repository/married_male_rejection.png')
+# Save the visualization to folder in my GitHub repository
+plt.savefig('C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/married_male_rejection.png')
 
 
 
@@ -727,7 +727,7 @@ Note: Save a copy of the visualization to a folder in your github, making sure i
 
 """
 
-# Assuming your dataset has a date column named 'Application_Date'
+# Assuming dataset has a date column named 'Application_Date'
 loan_data['Application_Date'] = pd.to_datetime(loan_data['Application_Date'])
 # Calculate the count of applications for each month
 monthly_counts = loan_data.groupby(loan_data['Application_Date'].dt.to_period('M')).size()
@@ -738,5 +738,54 @@ top_three_months.plot(kind='bar')
 plt.xlabel('Month')
 plt.ylabel('Number of Applications')
 plt.title('Top Three Months with Largest Volume of Applications')
-# Save the visualization to a folder in your GitHub repository
-#plt.savefig('path/to/your/github/repository/top_three_months.png')
+# Save the visualization to folder in my GitHub repository
+plt.savefig('C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/top_three_months.png')
+
+
+
+
+#Req 5.4
+
+"""
+Functional Requirements 5.4
+Find and plot which branch processed the highest total dollar value of healthcare transactions.
+Note: Save a copy of the visualization to a folder in your github, making sure it is PROPERLY NAMED!. 
+
+"""
+
+# Connect to MySQL database
+db = mysql.connector.connect(
+    host = "localhost",
+    user = secrets.mysql_username,
+    passwd = secrets.mysql_password,
+    database = "creditcard_capstone" #Database in mysql
+)
+# Define an SQL query to calculate the total dollar value of healthcare transactions for each branch
+sql_query = """
+SELECT BRANCH_NAME, SUM(TRANSACTION_VALUED) AS TOTAL_HEALTHCARE_DOLLAR_VALUE
+FROM CDW_SAPP_CREDIT_CARD
+WHERE TRANSACTION_TYPE = 'Healthcare'
+GROUP BY BRANCH_NAME
+ORDER BY TOTAL_HEALTHCARE_DOLLAR_VALUE DESC
+"""
+# Fetch the data into a Pandas DataFrame
+data = pd.read_sql(sql_query, db)
+# Create a bar plot
+plt.figure(figsize=(10, 6))
+plt.bar(data['BRANCH_NAME'], data['TOTAL_HEALTHCARE_DOLLAR_VALUE'])
+plt.xlabel('Branch Name')
+plt.ylabel('Total Dollar Value')
+plt.title('Total Dollar Value of Healthcare Transactions by Branch')
+plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for readability
+# Identify the branch with the highest value
+highest_branch = data.iloc[0]['BRANCH_NAME']
+# Highlight the branch with the highest value
+plt.bar(highest_branch, data.iloc[0]['TOTAL_HEALTHCARE_DOLLAR_VALUE'], color='red', label='Highest Branch')
+# Add a legend
+plt.legend()
+# Save the visualization to folder in my GitHub repository
+plt.savefig('C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/healthcare_transactions.png')
+# Close the MySQL connection
+db.close()
+# Show the plot
+plt.show()
