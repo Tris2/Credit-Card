@@ -1,7 +1,9 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType, TimestampType
+from pyspark.sql.functions import concat, lit, col
 import mysql.connector
-import secrets
+import mysql.connector as mysql
+import secret
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
@@ -11,36 +13,8 @@ import requests
 
 #Req 1.1 and 1.2
 
-"""
-
-Req-1.1
-Data Extraction and Transformation with Python and 
-PySpark
-Functional Requirement 1.1
-For “Credit Card System,” create a Python and PySpark SQL program to read/extract the following JSON files according to the specifications found in the mapping document.
- 
-1. CDW_SAPP_BRANCH.JSON
-2. CDW_SAPP_CREDITCARD.JSON
-3. CDW_SAPP_CUSTOMER.JSON
-
-Note: Data Engineers will be required to transform the data based on the requirements found in the Mapping Document.
-
-Hint: [You can use  PySQL “select statement query” or simple Pyspark RDD].
-Req-1.2
-Data loading into Database
-Function Requirement 1.2
-Once PySpark reads data from JSON files, and then utilizes Python, PySpark, and Python modules to load data into RDBMS(SQL), perform the following:
- 
-Create a Database in SQL(MySQL), named “creditcard_capstone.”
-Create a Python and Pyspark Program to load/write the “Credit Card System Data” into RDBMS(creditcard_capstone).
-Tables should be created by the following names in RDBMS:
-CDW_SAPP_BRANCH
-CDW_SAPP_CREDIT_CARD
-CDW_SAPP_CUSTOMER 
-
-
-
-"""
+from pyspark.sql import SparkSession
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType, TimestampType
 
 #Branch Schema
 branch_schema = StructType([
@@ -57,7 +31,6 @@ branch_schema = StructType([
 spark = SparkSession.builder.appName("JsonExtraction").getOrCreate()
 
 branch_data = spark.read.json("cdw_sapp_branch.json")
-
 branch_data.createOrReplaceTempView("branch_data")
 
 #Extracting the transformed Branch Data
@@ -80,8 +53,6 @@ transformed_branch_data = spark.sql("""
         LAST_UPDATED AS LAST_UPDATED
     FROM branch_data
 """)
-
-
 
 #Customer Schema
 
@@ -132,36 +103,40 @@ transformed_customer_data = spark.sql("""
 """)
 
 
-
-#Schema for Credit card
-schema_credit_card = StructType([
-    StructField("CUST_CC_NO", StringType(), True),
-    StructField("TIMEID", StringType(), True),
-    StructField("CUST_SSN", IntegerType(), True),
-    StructField("BRANCH_CODE", IntegerType(), True),
-    StructField("TRANSACTION_TYPE", StringType(), True),
-    StructField("TRANSACTION_VALUE", DoubleType(), True),
-    StructField("TRANSACTION_ID", IntegerType(), True)
-])
-
-# Read the JSON file with the defined schema
-credit_card_data = spark.read.schema(schema_credit_card).json("cdw_sapp_credit.json")
-
-# Create a temporary view for credit card data
-credit_card_data.createOrReplaceTempView("credit_card_data")
-
-# Write SQL queries based on the qualified column names
-transformed_credit_card_data = spark.sql("""
-    SELECT
-        CUST_CC_NO AS CUST_CC_NO,
-        TIMEID AS TIMEID,
-        CAST(CUST_SSN AS INT) AS CUST_SSN,
-        CAST(BRANCH_CODE AS INT) AS BRANCH_CODE,
-        TRANSACTION_TYPE AS TRANSACTION_TYPE,
-        CAST(TRANSACTION_VALUE AS DOUBLE) AS TRANSACTION_VALUE,
-        CAST(TRANSACTION_ID AS INT) AS TRANSACTION_ID
-    FROM credit_card_data
-""")
+# Initialize a Spark session
+spark = SparkSession.builder.appName("CreditCardDataLoader").getOrCreate()
+# Define the input file path and read the JSON data
+input_file = "C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/cdw_sapp_credit.json"
+df = spark.read.json(input_file)
+# Convert DAY, MONTH, YEAR to TIMEID (YYYYMMDD)
+df = df.withColumn("TIMEID", concat(df["YEAR"], lit("-"), df["MONTH"], lit("-"), df["DAY"]))
+# Rename columns and select required columns
+df = df.select(
+    col("CREDIT_CARD_NO").alias("CUST_CC_NO"),
+    "TIMEID",
+    "CUST_SSN",
+    "BRANCH_CODE",
+    "TRANSACTION_TYPE",
+    "TRANSACTION_VALUE",
+    "TRANSACTION_ID"
+)
+# Database connection details
+db_config = {
+    "host": "localhost",
+    "user": secret.mysql_username,
+    "password": secret.mysql_password,
+    "database": "creditcard_capstone"
+}
+# Write the DataFrame to the MySQL database
+df.write.format("jdbc").options(
+    url="jdbc:mysql://{0}/{1}".format(db_config["host"], db_config["database"]),
+    driver="com.mysql.cj.jdbc.Driver",
+    dbtable="CDW_SAPP_CREDIT_CARD",
+    user=db_config["user"],
+    password=db_config["password"]
+).mode("overwrite").save()
+# Close the Spark session
+spark.stop()
 
 
 
@@ -169,19 +144,16 @@ spark = SparkSession.builder.appName("CreditCardSystemLoader").getOrCreate()
 
 # Load the transformed data into DataFrames (replace with your DataFrames)
 branch_data = transformed_branch_data
-credit_card_data = transformed_credit_card_data
 customer_data = transformed_customer_data
 
 
 db = mysql.connector.connect(
     host = "localhost",
-    user = secrets.mysql_username,
-    passwd = secrets.mysql_password,
+    user = secret.mysql_username,
+    passwd = secret.mysql_password,
     database = "creditcard_capstone" #Database in mysql
 
 )
-
-
 
 
 # Write DataFrames to MySQL tables using the existing MySQL connection
@@ -191,17 +163,8 @@ branch_data.write \
     .option("dbtable", "CDW_SAPP_BRANCH") \
     .option("mode", "overwrite") \
     .option("driver", "com.mysql.cj.jdbc.Driver") \
-    .option("user", secrets.mysql_username) \
-    .option("password", secrets.mysql_password) \
-    .save()
-credit_card_data.write \
-    .format("jdbc") \
-    .option("url", "jdbc:mysql://localhost:3306/creditcard_capstone") \
-    .option("dbtable", "CDW_SAPP_CREDIT_CARD") \
-    .option("mode", "overwrite") \
-    .option("driver", "com.mysql.cj.jdbc.Driver") \
-    .option("user", secrets.mysql_username) \
-    .option("password", secrets.mysql_password) \
+    .option("user", secret.mysql_username) \
+    .option("password", secret.mysql_password) \
     .save()
 customer_data.write \
     .format("jdbc") \
@@ -209,15 +172,13 @@ customer_data.write \
     .option("dbtable", "CDW_SAPP_CUSTOMER") \
     .option("mode", "overwrite") \
     .option("driver", "com.mysql.cj.jdbc.Driver") \
-    .option("user", secrets.mysql_username) \
-    .option("password", secrets.mysql_password) \
+    .option("user", secret.mysql_username) \
+    .option("password", secret.mysql_password) \
     .save()
 # Stop the Spark session
 spark.stop()
 # Close the MySQL connection
 db.close()
-
-
 
 #Req 2.1
 
@@ -237,88 +198,101 @@ Functional Requirements 2.1
 
 """
 
-# Define database connection details
-db = mysql.connector.connect(
-    host = "localhost",
-    user = secrets.mysql_username,
-    passwd = secrets.mysql_password,
-    database = "creditcard_capstone" #Database in mysql
-
-)
-cursor = db.cursor()
-# Function to display transactions by zip code, month, and year
-def display_transactions_by_zip_month_year(zip_code, month, year):
-    # SQL query to retrieve transactions by zip code, month, and year
+def establish_db_connection():
+    # Define your database connection details and connect
+    db = mysql.connect(
+        host="localhost",
+        user=secret.mysql_username,
+        passwd=secret.mysql_password,
+        database="creditcard_capstone"  # Database in MySQL
+    )
+    return db, db.cursor()
+def check_customer_details(cursor, customer_id):
+    # SQL query to retrieve customer details
+    query = "SELECT * FROM CDW_SAPP_CUSTOMER WHERE SSN = %s"
+    cursor.execute(query, (customer_id,))
+    customer_details = cursor.fetchone()
+    if customer_details:
+        print("Customer Details:")
+        print("SSN:", customer_details[0])
+        print("First Name:", customer_details[1])
+        print("Last Name:", customer_details[2])
+        # Display other customer details
+    else:
+        print("Customer not found.")
+def modify_customer_details(cursor, customer_id, new_email):
+    # SQL query to update customer email
+    query = "UPDATE CDW_SAPP_CUSTOMER SET CUST_EMAIL = %s WHERE SSN = %s"
+    cursor.execute(query, (new_email, customer_id))
+    cursor.db.commit()
+    print("Customer email updated successfully.")
+def generate_monthly_bill(cursor, credit_card_number, month, year):
+    # SQL query to retrieve monthly bill details
     query = """
     SELECT * FROM CDW_SAPP_CREDIT_CARD
-    WHERE YEAR(TIMEID) = %s AND MONTH(TIMEID) = %s AND CUST_ZIP = %s
+    WHERE YEAR(TIMEID) = %s AND MONTH(TIMEID) = %s AND CUST_CC_NO = %s
     ORDER BY TIMEID DESC;
     """
-    cursor.execute(query, (year, month, zip_code))
+    cursor.execute(query, (year, month, credit_card_number))
+    monthly_bill = cursor.fetchall()
+    if monthly_bill:
+        print("Monthly Bill for Credit Card Number:", credit_card_number)
+        for transaction in monthly_bill:
+            print(transaction)
+    else:
+        print("No transactions found for the specified month and year.")
+def display_transactions_between_dates(cursor, customer_id, start_date, end_date):
+    # SQL query to retrieve transactions between two dates
+    query = """
+    SELECT * FROM CDW_SAPP_CREDIT_CARD
+    WHERE TIMEID BETWEEN %s AND %s AND CUST_CC_NO = %s
+    ORDER BY TIMEID DESC;
+    """
+    cursor.execute(query, (start_date, end_date, customer_id))
     transactions = cursor.fetchall()
-    # Display the results
-    print("Transactions by Zip Code, Month, and Year:")
-    for transaction in transactions:
-        print(transaction)
-# Function to display number and total values of transactions for a given type
-def display_transactions_by_type(transaction_type):
-    # SQL query to retrieve transactions by type
-    query = """
-    SELECT COUNT(*) AS transaction_count, SUM(TRANSACTION_VALUE) AS total_value
-    FROM CDW_SAPP_CREDIT_CARD
-    WHERE TRANSACTION_TYPE = %s;
-    """
-    cursor.execute(query, (transaction_type,))
-    result = cursor.fetchone()
-    # Display the results
-    print("Number of Transactions by Type:", result[0])
-    print("Total Value of Transactions by Type:", result[1])
-# Function to display total number and total values of transactions for branches in a given state
-def display_transactions_by_state(branch_state):
-    # SQL query to retrieve transactions by state
-    query = """
-    SELECT BRANCH_CODE, COUNT(*) AS transaction_count, SUM(TRANSACTION_VALUE) AS total_value
-    FROM CDW_SAPP_CREDIT_CARD
-    WHERE BRANCH_CODE IN (
-        SELECT BRANCH_CODE FROM CDW_SAPP_BRANCH WHERE BRANCH_STATE = %s
-    )
-    GROUP BY BRANCH_CODE;
-    """
-    cursor.execute(query, (branch_state,))
-    results = cursor.fetchall()
-    # Display the results
-    print("Transactions by State:", branch_state)
-    for result in results:
-        print("Branch Code:", result[0])
-        print("Number of Transactions:", result[1])
-        print("Total Value of Transactions:", result[2])
-# Main program
-if __name__ == "__main":
+    if transactions:
+        print("Transactions between", start_date, "and", end_date)
+        for transaction in transactions:
+            print(transaction)
+    else:
+        print("No transactions found between the specified dates.")
+def main():
+    db, cursor = establish_db_connection()
     while True:
-        print("Transaction Details Module:")
-        print("1. Display Transactions by Zip Code, Month, and Year")
-        print("2. Display Number and Total Values of Transactions by Type")
-        print("3. Display Total Number and Total Values of Transactions by Branch State")
-        print("4. Quit")
+        print("Customer Details Module:")
+        print("1. Check Customer Details")
+        print("2. Modify Customer Email")
+        print("3. Generate Monthly Bill")
+        print("4. Display Customer Transactions Between Two Dates")
+        print("5. Quit")
         choice = input("Enter your choice: ")
         if choice == "1":
-            zip_code = input("Enter Zip Code: ")
+            customer_id = input("Enter Customer SSN: ")
+            check_customer_details(cursor, customer_id)
+        elif choice == "2":
+            customer_id = input("Enter Customer SSN: ")
+            new_email = input("Enter New Email: ")
+            modify_customer_details(cursor, customer_id, new_email)
+        elif choice == "3":
+            credit_card_number = input("Enter Credit Card Number: ")
             month = input("Enter Month (numeric): ")
             year = input("Enter Year (YYYY): ")
-            display_transactions_by_zip_month_year(zip_code, month, year)
-        elif choice == "2":
-            transaction_type = input("Enter Transaction Type: ")
-            display_transactions_by_type(transaction_type)
-        elif choice == "3":
-            branch_state = input("Enter Branch State: ")
-            display_transactions_by_state(branch_state)
+            generate_monthly_bill(cursor, credit_card_number, month, year)
         elif choice == "4":
+            customer_id = input("Enter Customer SSN: ")
+            start_date = input("Enter Start Date (YYYYMMDD): ")
+            end_date = input("Enter End Date (YYYYMMDD): ")
+            display_transactions_between_dates(cursor, customer_id, start_date, end_date)
+        elif choice == "5":
             break
         else:
             print("Invalid choice. Please enter a valid option.")
-    # Close the database connection
+            
     cursor.close()
     db.close()
+if __name__ == "__main__":
+    main()
+
 
 
 #Req 2.2
@@ -336,45 +310,56 @@ Functional Requirements 2.2
 4) Used to display the transactions made by a customer between two dates. Order by year, month, and day in descending order.
 
 """
-# Define database connection details and connect
-db = mysql.connector.connect(
-    host = "localhost",
-    user = secrets.mysql_username,
-    passwd = secrets.mysql_password,
-    database = "creditcard_capstone" #Database in mysql
-)
-cursor = db.cursor()
-# Function to check existing account details of a customer
-def check_customer_details(customer_id):
-    # SQL query to retrieve customer details
+#Req 2.2
+
+# Define your database connection details
+db_config = {
+    "host": "localhost",
+    "user": secret.mysql_username,
+    "passwd": secret.mysql_password,
+    "database": "creditcard_capstone"
+}
+def connect_to_database():
+    # Establish a connection to the MySQL database
+    try:
+        db = mysql.connector.connect(**db_config)
+        cursor = db.cursor()
+        return db, cursor
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+        return None, None
+def close_database_connection(db, cursor):
+    # Close the database connection
+    if db:
+        cursor.close()
+        db.close()
+def check_customer_details(cursor, customer_ssn):
+    # SQL query to retrieve customer details by SSN
     query = "SELECT * FROM CDW_SAPP_CUSTOMER WHERE SSN = %s"
-    cursor.execute(query, (customer_id,))
+    cursor.execute(query, (customer_ssn,))
     customer_details = cursor.fetchone()
-    # Display customer details
     if customer_details:
         print("Customer Details:")
-        print("SSN:", customer_details[0])
-        print("First Name:", customer_details[1])
-        print("Last Name:", customer_details[2])
-        print("Street Address:", customer_details[3])
-        print("City:", customer_details[4])
-        print("State:", customer_details[5])
-        print("Country:", customer_details[6])
-        print("ZIP:", customer_details[7])
-        print("Phone:", customer_details[8])
-        print("Email:", customer_details[9])
+        print(f"SSN: {customer_details[0]}")
+        print(f"First Name: {customer_details[1]}")
+        print(f"Last Name: {customer_details[2]}")
+        print(f"Street Address: {customer_details[3]}")
+        print(f"City: {customer_details[4]}")
+        print(f"State: {customer_details[5]}")
+        print(f"Country: {customer_details[6]}")
+        print(f"ZIP: {customer_details[7]}")
+        print(f"Phone: {customer_details[8]}")
+        print(f"Email: {customer_details[9]}")
     else:
         print("Customer not found.")
-# Function to modify existing account details of a customer
-def modify_customer_details(customer_id, new_email):
-    # SQL query to update customer email
+def modify_customer_details(cursor, customer_ssn, new_email):
+    # SQL query to update customer email by SSN
     query = "UPDATE CDW_SAPP_CUSTOMER SET CUST_EMAIL = %s WHERE SSN = %s"
-    cursor.execute(query, (new_email, customer_id))
+    cursor.execute(query, (new_email, customer_ssn))
     db.commit()
     print("Customer email updated successfully.")
-# Function to generate a monthly bill for a credit card
-def generate_monthly_bill(credit_card_number, month, year):
-    # SQL query to retrieve monthly bill details
+def generate_monthly_bill(cursor, credit_card_number, year, month):
+    # SQL query to retrieve monthly bill for a credit card
     query = """
     SELECT * FROM CDW_SAPP_CREDIT_CARD
     WHERE YEAR(TIMEID) = %s AND MONTH(TIMEID) = %s AND CUST_CC_NO = %s
@@ -382,65 +367,63 @@ def generate_monthly_bill(credit_card_number, month, year):
     """
     cursor.execute(query, (year, month, credit_card_number))
     monthly_bill = cursor.fetchall()
-    # Display the monthly bill
     if monthly_bill:
         print("Monthly Bill for Credit Card Number:", credit_card_number)
         for transaction in monthly_bill:
             print(transaction)
     else:
         print("No transactions found for the specified month and year.")
-# Function to display customer transactions between two dates
-def display_transactions_between_dates(customer_id, start_date, end_date):
+def display_transactions_between_dates(cursor, customer_ssn, start_date, end_date):
     # SQL query to retrieve transactions between two dates
     query = """
     SELECT * FROM CDW_SAPP_CREDIT_CARD
     WHERE TIMEID BETWEEN %s AND %s AND CUST_CC_NO = %s
     ORDER BY TIMEID DESC;
     """
-    cursor.execute(query, (start_date, end_date, customer_id))
+    cursor.execute(query, (start_date, end_date, customer_ssn))
     transactions = cursor.fetchall()
-    # Display transactions
     if transactions:
         print("Transactions between", start_date, "and", end_date)
         for transaction in transactions:
             print(transaction)
     else:
         print("No transactions found between the specified dates.")
-# Main program
-if __name__ == "__main":
-    while True:
-        print("Customer Details Module:")
-        print("1. Check Customer Details")
-        print("2. Modify Customer Email")
-        print("3. Generate Monthly Bill")
-        print("4. Display Customer Transactions Between Two Dates")
-        print("5. Quit")
-        choice = input("Enter your choice: ")
-        if choice == "1":
-            customer_id = input("Enter Customer SSN: ")
-            check_customer_details(customer_id)
-        elif choice == "2":
-            customer_id = input("Enter Customer SSN: ")
-            new_email = input("Enter New Email: ")
-            modify_customer_details(customer_id, new_email)
-        elif choice == "3":
-            credit_card_number = input("Enter Credit Card Number: ")
-            month = input("Enter Month (numeric): ")
-            year = input("Enter Year (YYYY): ")
-            generate_monthly_bill(credit_card_number, month, year)
-        elif choice == "4":
-            customer_id = input("Enter Customer SSN: ")
-            start_date = input("Enter Start Date (YYYYMMDD): ")
-            end_date = input("Enter End Date (YYYYMMDD): ")
-            display_transactions_between_dates(customer_id, start_date, end_date)
-        elif choice == "5":
-            break
-        else:
-            print("Invalid choice. Please enter a valid option.")
-    # Close the database connection
-    cursor.close()
-    db.close()
-
+def main():
+    db, cursor = connect_to_database()
+    if db and cursor:
+        while True:
+            print("Customer Details Module:")
+            print("1. Check Customer Details")
+            print("2. Modify Customer Email")
+            print("3. Generate Monthly Bill")
+            print("4. Display Customer Transactions Between Two Dates")
+            print("5. Quit")
+            choice = input("Enter your choice: ")
+            if choice == "1":
+                customer_ssn = input("Enter Customer SSN: ")
+                check_customer_details(cursor, customer_ssn)
+            elif choice == "2":
+                customer_ssn = input("Enter Customer SSN: ")
+                new_email = input("Enter New Email: ")
+                modify_customer_details(cursor, customer_ssn, new_email)
+            elif choice == "3":
+                credit_card_number = input("Enter Credit Card Number: ")
+                year = input("Enter Year (YYYY): ")
+                month = input("Enter Month (numeric): ")
+                generate_monthly_bill(cursor, credit_card_number, year, month)
+            elif choice == "4":
+                customer_ssn = input("Enter Customer SSN: ")
+                start_date = input("Enter Start Date (YYYYMMDD): ")
+                end_date = input("Enter End Date (YYYYMMDD): ")
+                display_transactions_between_dates(cursor, customer_ssn, start_date, end_date)
+            elif choice == "5":
+                break
+            else:
+                print("Invalid choice. Please enter a valid option.")
+        # Close the database connection
+        close_database_connection(db, cursor)
+if __name__ == "__main__":
+    main()
 
 
 
@@ -458,40 +441,37 @@ Note: Save a copy of the visualization to a folder in your github, making sure i
 """
 
 # Define your database connection details
-db = mysql.connector.connect(
-    host = "localhost",
-    user = secrets.mysql_username,
-    passwd = secrets.mysql_password,
-    database = "creditcard_capstone" #Database in mysql
-)
-
-# SQL query to find transaction type with the highest transaction count
+db_config = {
+    "host": "localhost",
+    "user": secret.mysql_username,
+    "passwd": secret.mysql_password,
+    "database": "creditcard_capstone"
+}
+# Establish a connection to the MySQL database
+db = mysql.connector.connect(**db_config)
+# Define your SQL query to get transaction types and their counts
 query = """
-SELECT TRANSACTION_TYPE, COUNT(*) AS transaction_count
+SELECT TRANSACTION_TYPE, COUNT(*) as TransactionCount
 FROM CDW_SAPP_CREDIT_CARD
 GROUP BY TRANSACTION_TYPE
-ORDER BY transaction_count DESC
-LIMIT 1;
+ORDER BY TransactionCount DESC
 """
-# Execute the query and retrieve data
-cursor = db.cursor()
-cursor.execute(query)
-result = cursor.fetchone()
-# Extract transaction type and count
-transaction_type = result[0]
-transaction_count = result[1]
-# Plot the result
-plt.figure(figsize=(8, 6))
-plt.bar(transaction_type, transaction_count)
-plt.xlabel("Transaction Type")
-plt.ylabel("Transaction Count")
-plt.title("Transaction Type with the Highest Transaction Count")
-plt.tight_layout()
-# Save the visualization to folder in my GitHub repository
-plt.savefig("C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/transaction_type_highest_count.png")
+# Fetch the data from the database using pandas
+data = pd.read_sql(query, db)
+# Set up data for the pie chart
+labels = data["TRANSACTION_TYPE"]
+sizes = data["TransactionCount"]
+total_transactions = sum(sizes)  # Calculate the total number of transactions
+# Create a pie chart with a title including the total number of transactions
+plt.figure(figsize=(8, 8))
+plt.pie(sizes, labels=labels, autopct=lambda p: '{:.1f}% ({:.0f})'.format(p, p * total_transactions / 100), startangle=140)
+plt.title(f"Transaction Types by Transaction Count (Total: {total_transactions} transactions)")
+# Save the visualization as an image
+plt.savefig("transaction_type_pie_chart.png")
+# Show the pie chart and save
 plt.show()
+plt.savefig("C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/transaction_type_highest_count.png")
 # Close the database connection
-cursor.close()
 db.close()
 
 
@@ -505,33 +485,40 @@ Note: Save a copy of the visualization to a folder in your github, making sure i
 
 """
 
-# SQL query to find the state with a high number of customers
+# Define your database connection details
+db_config = {
+    "host": "localhost",
+    "user": secret.mysql_username,
+    "passwd": secret.mysql_password,
+    "database": "creditcard_capstone"
+}
+# Establish a connection to the MySQL database
+db = mysql.connector.connect(**db_config)
+# Define your SQL query to get the number of customers in each state
 query = """
-SELECT CUST_STATE, COUNT(*) AS customer_count
+SELECT CUST_STATE, COUNT(*) as CustomerCount
 FROM CDW_SAPP_CUSTOMER
 GROUP BY CUST_STATE
-ORDER BY customer_count DESC
-LIMIT 1;
+ORDER BY CustomerCount DESC
 """
-# Execute the query and retrieve data
-cursor = db.cursor()
-cursor.execute(query)
-result = cursor.fetchone()
-# Extract state and customer count
-state = result[0]
-customer_count = result[1]
-# Plot the result
-plt.figure(figsize=(8, 6))
-plt.bar(state, customer_count)
+# Fetch the data from the database using pandas
+data = pd.read_sql(query, db)
+# Create a line graph to visualize the number of customers in each state
+plt.figure(figsize=(12, 6))
+plt.plot(data["CUST_STATE"], data["CustomerCount"], marker='o')
+plt.title("Number of Customers by State")
 plt.xlabel("State")
-plt.ylabel("Customer Count")
-plt.title("State with a High Number of Customers")
-plt.tight_layout()
-# Save the visualization to folder in my GitHub repository
-plt.savefig("C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/state_high_customer_count.png")
+plt.ylabel("Number of Customers")
+plt.xticks(rotation=45)
+
+# Annotate the data points with the number of customers
+for i, row in data.iterrows():
+    plt.annotate(row["CustomerCount"], (row["CUST_STATE"], row["CustomerCount"]), textcoords="offset points", xytext=(0, 10), ha='center')
+
+# Show the line graph and save
 plt.show()
+plt.savefig("C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/state_high_customer_count.png")
 # Close the database connection
-cursor.close()
 db.close()
 
 
@@ -547,34 +534,38 @@ Note: Save a copy of the visualization to a folder in your github, making sure i
 
 """
 
-# SQL query to find the top 10 customers with the highest transaction amounts
+# Define your database connection details
+db_config = {
+    "host": "localhost",
+    "user": secret.mysql_username,
+    "passwd": secret.mysql_password,
+    "database": "creditcard_capstone"
+}
+# Establish a connection to the MySQL database
+db = mysql.connector.connect(**db_config)
+# Define your SQL query to get the sum of transactions for the top 10 customers
 query = """
-SELECT CUST_SSN, SUM(TRANSACTION_VALUE) AS total_transaction_amount
+SELECT CUST_SSN, SUM(TRANSACTION_VALUE) AS TotalTransactionAmount
 FROM CDW_SAPP_CREDIT_CARD
 GROUP BY CUST_SSN
-ORDER BY total_transaction_amount DESC
-LIMIT 10;
+ORDER BY TotalTransactionAmount DESC
+LIMIT 10
 """
-# Execute the query and retrieve data
-cursor = db.cursor()
-cursor.execute(query)
-result = cursor.fetchall()
-# Extract data into separate lists
-customer_ssns = [row[0] for row in result]
-transaction_amounts = [row[1] for row in result]
-# Plot the result
-plt.figure(figsize=(10, 6))
-plt.bar(customer_ssns, transaction_amounts)
-plt.xlabel("Customer SSN")
-plt.ylabel("Total Transaction Amount")
-plt.title("Top 10 Customers with Highest Transaction Amount")
-plt.xticks(rotation=45)
-plt.tight_layout()
-# Save the visualization to folder in my GitHub repository
+# Fetch the data from the database using pandas
+data = pd.read_sql(query, db)
+# Create a list of labels with customer SSNs and total transaction amounts
+labels = [f"{row['CUST_SSN']} (${row['TotalTransactionAmount']:.2f})" for _, row in data.iterrows()]
+# Create a list of total transaction amounts
+sizes = data["TotalTransactionAmount"]
+# Create a pie chart to visualize the total transaction amount for the top 10 customers
+plt.figure(figsize=(8, 8))
+plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
+plt.title("Total Transaction Amount for Top 10 Customers")
+# Save the visualization as an image
 plt.savefig("C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/top_10_customers_transaction_amount.png")
+# Show the pie chart
 plt.show()
 # Close the database connection
-cursor.close()
 db.close()
 
 
@@ -603,8 +594,8 @@ api_url = "https://raw.githubusercontent.com/platformps/LoanDataset/main/loan_da
 # Database connection configuration
 db = mysql.connector.connect(
     host = "localhost",
-    user = secrets.mysql_username,
-    passwd = secrets.mysql_password,
+    user = secret.mysql_username,
+    passwd = secret.mysql_password,
     database = "creditcard_capstone" #Database in mysql
 )
 # Send a GET request to the API endpoint
@@ -675,25 +666,48 @@ Note: Save a copy of the visualization to a folder in your github, making sure i
 
 """
 
-# Load data from MySQL database into a Pandas DataFrame
-db = mysql.connector.connect(
-    host = "localhost",
-    user = secrets.mysql_username,
-    passwd = secrets.mysql_password,
-    database = "creditcard_capstone" #Database in mysql
-)
-query = "SELECT * FROM CDW_SAPP_loan_application"
-loan_data = pd.read_sql(query, db)
-# Filter self-employed applicants
-self_employed_applicants = loan_data[loan_data['Self_Employed'] == 'Yes']
-# Calculate the percentage of approved applications among self-employed applicants
-approved_percentage = (self_employed_applicants['Application_Status'] == 'Y').mean() * 100
-# Create a bar chart
-plt.bar(['Self-Employed'], [approved_percentage])
-plt.ylabel('Percentage Approved')
-plt.title('Percentage of Applications Approved for Self-Employed Applicants')
-# Save the visualization to folder in my GitHub repository
+# Establish a connection to the MySQL database
+db_config = {
+    "host": "localhost",
+    "user": secret.mysql_username,
+    "passwd": secret.mysql_password,
+    "database": "creditcard_capstone"
+}
+db = mysql.connector.connect(**db_config)
+# Define SQL queries to get the count of approved and self-employed applications
+total_query = "SELECT COUNT(*) FROM cdw_sapp_loan_application"
+approved_query = "SELECT COUNT(*) FROM cdw_sapp_loan_application WHERE APPLICATION_STATUS = 'Y'"
+self_employed_query = "SELECT COUNT(*) FROM cdw_sapp_loan_application WHERE SELF_EMPLOYED = 'Yes'"
+# Execute the queries
+cursor = db.cursor()
+cursor.execute(total_query)
+total_applications = cursor.fetchone()[0]
+cursor.execute(approved_query)
+approved_applications = cursor.fetchone()[0]
+cursor.execute(self_employed_query)
+self_employed_applications = cursor.fetchone()[0]
+# Calculate the percentage of approved applications for self-employed applicants
+percentage_approved_for_self_employed = (approved_applications / self_employed_applications) * 100
+# Create a line graph
+x = ["Self-Employed"]
+y = [percentage_approved_for_self_employed]
+plt.plot(x, y, marker='o')
+# Include the total, approved, and total applicants in the graph
+plt.text("Self-Employed", percentage_approved_for_self_employed,
+         f"Total Applicants: {total_applications}\nApproved Applicants: {approved_applications}\nSelf-Employed Applicants: {self_employed_applications}",
+         fontsize=12, va='bottom', ha='center')
+plt.title("Percentage of Approved Applications for Self-Employed Applicants")
+plt.xlabel("Applicant Type")
+plt.ylabel("Percentage (%)")
+
+#Moving Legend
+plt.legend(['Percentage Approved'], bbox_to_anchor=(1.05, 1), loc='upper left')
+# Save the visualization as an image
 plt.savefig('C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/self_employed_approval.png')
+# Show the line graph
+plt.show()
+# Close the database connection
+db.close()
 
 
 #Req 5.2
@@ -704,19 +718,39 @@ Find the percentage of rejection for married male applicants.
 Note: Save a copy of the visualization to a folder in your github, making sure it is PROPERLY NAMED!
 
 """
-
-# Filter married male applicants
-married_male_applicants = loan_data[(loan_data['Gender'] == 'Male') & (loan_data['Married'] == 'Yes')]
-# Calculate the percentage of rejection among married male applicants
-rejection_percentage = (married_male_applicants['Application_Status'] == 'N').mean() * 100
-# Create a bar chart
-plt.bar(['Married Male'], [rejection_percentage])
-plt.ylabel('Percentage Rejected')
-plt.title('Percentage of Rejection for Married Male Applicants')
-# Save the visualization to folder in my GitHub repository
-plt.savefig('C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/married_male_rejection.png')
-
-
+# Establish a connection to the MySQL database
+db_config = {
+    "host": "localhost",
+    "user": secret.mysql_username,
+    "passwd": secret.mysql_password,
+    "database": "creditcard_capstone"
+}
+db = mysql.connector.connect(**db_config)
+# Define SQL queries to count the number of married male applicants and the number of rejected applications among them
+married_male_query = "SELECT COUNT(*) FROM cdw_sapp_loan_application WHERE Gender = 'Male' AND Married = 'Yes'"
+rejected_married_male_query = "SELECT COUNT(*) FROM cdw_sapp_loan_application WHERE Gender = 'Male' AND Married = 'Yes' AND Application_Status = 'N'"
+# Execute the queries
+cursor = db.cursor()
+cursor.execute(married_male_query)
+married_male_count = cursor.fetchone()[0]
+cursor.execute(rejected_married_male_query)
+rejected_married_male_count = cursor.fetchone()[0]
+# Calculate the percentage of rejection for married male applicants
+percentage_rejection_married_male = (rejected_married_male_count / married_male_count) * 100
+# Create a pie chart
+labels = ['Approved', 'Rejected']
+sizes = [married_male_count - rejected_married_male_count, rejected_married_male_count]
+colors = ['lightgreen', 'lightcoral']
+explode = (0, 0.1)  # Explode the 'Rejected' slice
+plt.pie(sizes, explode=explode, labels=labels, colors=colors, autopct='%1.1f%%', shadow=True, startangle=140)
+plt.title("Percentage of Rejection for Married Male Applicants")
+plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle
+# Save the visualization as an image
+plt.savefig('C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/rejection_married_male.png', bbox_inches='tight')
+# Show the pie chart
+plt.show()
+# Close the database connection
+db.close()
 
 #Req 5.3
 
@@ -727,21 +761,47 @@ Note: Save a copy of the visualization to a folder in your github, making sure i
 
 """
 
-# Assuming dataset has a date column named 'Application_Date'
-loan_data['Application_Date'] = pd.to_datetime(loan_data['Application_Date'])
-# Calculate the count of applications for each month
-monthly_counts = loan_data.groupby(loan_data['Application_Date'].dt.to_period('M')).size()
-# Select the top three months with the largest volume
-top_three_months = monthly_counts.nlargest(3)
-# Create a bar chart
-top_three_months.plot(kind='bar')
-plt.xlabel('Month')
-plt.ylabel('Number of Applications')
-plt.title('Top Three Months with Largest Volume of Applications')
-# Save the visualization to folder in my GitHub repository
-plt.savefig('C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/top_three_months.png')
-
-
+# Establish a connection to the MySQL database
+db_config = {
+    "host": "localhost",
+    "user": secret.mysql_username,
+    "passwd": secret.mysql_password,
+    "database": "creditcard_capstone"
+}
+db = mysql.connector.connect(**db_config)
+# Define an SQL query to retrieve the top three months with the largest transaction volume
+query = """
+    SELECT DISTINCT YEAR(TIMEID) AS year, MONTH(TIMEID) AS month, COUNT(*) AS transaction_count
+    FROM cdw_sapp_credit_card
+    GROUP BY year, month
+    ORDER BY transaction_count DESC
+    LIMIT 3
+"""
+# Execute the query and fetch the data
+cursor = db.cursor()
+cursor.execute(query)
+results = cursor.fetchall()
+# Extract year, month, and transaction count data
+months = []
+transaction_counts = []
+for result in results:
+    year = result[0]
+    month = result[1]
+    count = result[2]
+    if year is not None and month is not None and count is not None:
+        months.append(f"{year}-{month:02d}")
+        transaction_counts.append(count)
+# Create a pie chart
+plt.figure(figsize=(6, 6))
+plt.pie(transaction_counts, labels=months, autopct='%1.1f%%', startangle=140)
+plt.title("Top Three Months with Largest Transaction Volume")
+plt.axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle
+# Save the visualization as an image
+plt.savefig('C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/top_three_months.png', bbox_inches='tight')
+# Show the pie chart
+plt.show()
+# Close the database connection
+db.close()
 
 
 #Req 5.4
@@ -756,36 +816,41 @@ Note: Save a copy of the visualization to a folder in your github, making sure i
 # Connect to MySQL database
 db = mysql.connector.connect(
     host = "localhost",
-    user = secrets.mysql_username,
-    passwd = secrets.mysql_password,
+    user = secret.mysql_username,
+    passwd = secret.mysql_password,
     database = "creditcard_capstone" #Database in mysql
 )
-# Define an SQL query to calculate the total dollar value of healthcare transactions for each branch
-sql_query = """
-SELECT BRANCH_NAME, SUM(TRANSACTION_VALUED) AS TOTAL_HEALTHCARE_DOLLAR_VALUE
-FROM CDW_SAPP_CREDIT_CARD
-WHERE TRANSACTION_TYPE = 'Healthcare'
-GROUP BY BRANCH_NAME
-ORDER BY TOTAL_HEALTHCARE_DOLLAR_VALUE DESC
+# Define your SQL query to calculate the total dollar value of healthcare transactions per branch
+query = """
+    SELECT BRANCH_CODE, SUM(TRANSACTION_VALUE) AS TOTAL_DOLLAR
+    FROM CDW_SAPP_CREDIT_CARD
+    WHERE TRANSACTION_TYPE = 'Healthcare'
+    GROUP BY BRANCH_CODE
+    ORDER BY TOTAL_DOLLAR DESC
+    LIMIT 10
 """
-# Fetch the data into a Pandas DataFrame
-data = pd.read_sql(sql_query, db)
-# Create a bar plot
-plt.figure(figsize=(10, 6))
-plt.bar(data['BRANCH_NAME'], data['TOTAL_HEALTHCARE_DOLLAR_VALUE'])
-plt.xlabel('Branch Name')
-plt.ylabel('Total Dollar Value')
-plt.title('Total Dollar Value of Healthcare Transactions by Branch')
-plt.xticks(rotation=45, ha='right')  # Rotate x-axis labels for readability
-# Identify the branch with the highest value
-highest_branch = data.iloc[0]['BRANCH_NAME']
-# Highlight the branch with the highest value
-plt.bar(highest_branch, data.iloc[0]['TOTAL_HEALTHCARE_DOLLAR_VALUE'], color='red', label='Highest Branch')
-# Add a legend
-plt.legend()
-# Save the visualization to folder in my GitHub repository
-plt.savefig('C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/healthcare_transactions.png')
-# Close the MySQL connection
+# Execute the query
+cursor = db.cursor()
+cursor.execute(query)
+# Fetch the results
+results = cursor.fetchall()
+# Close the database connection
 db.close()
-# Show the plot
+# Prepare the data for plotting
+branch_codes = [row[0] for row in results]
+total_dollars = [row[1] for row in results]
+# Create a bar graph with labeled branches
+plt.figure(figsize=(10, 6))
+plt.bar(branch_codes, total_dollars)
+plt.title("Top 10 Branches Processing Highest Healthcare Transactions")
+plt.xlabel("Branch Code")
+plt.ylabel("Total Dollar Value")
+# Label the branches with their codes
+for i, total in enumerate(total_dollars):
+    plt.text(branch_codes[i], total, str(int(total)), ha='center', va='bottom')
+# Include specific branch codes on the x-axis
+plt.xticks(branch_codes)
+# Save the visualization to a file
+plt.savefig('C:/Users/Learner_9ZH3Z184/Documents/GitHub/Credit-Card/Final_Project/healthcare_transactions.png')
+# Show the bar graph
 plt.show()
